@@ -1,65 +1,235 @@
-import Image from "next/image";
+/**
+ * @fileoverview Home page with workflow listing
+ * @module App/Page
+ */
 
-export default function Home() {
+'use client';
+
+import { useState, useEffect, useCallback, useRef, type ReactElement, type ChangeEvent } from 'react';
+import { useRouter } from 'next/navigation';
+import { Plus, Upload } from 'lucide-react';
+import { HomeSidebar } from '@/components/home/HomeSidebar';
+import { WorkflowGrid } from '@/components/home/WorkflowGrid';
+import { listWorkflows, deleteWorkflow, getWorkflow, createWorkflow } from '@/lib/db/workflows';
+import { cn } from '@/lib/utils/cn';
+import type { WorkflowSummary, WorkflowExport } from '@/types/workflow';
+
+/**
+ * Home - Main page with workflow listing
+ *
+ * @component
+ * @returns {ReactElement} Rendered home page
+ */
+export default function Home(): ReactElement {
+  const router = useRouter();
+  const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Load workflows on mount
+   */
+  useEffect(() => {
+    async function load() {
+      setIsLoading(true);
+      setError(null);
+
+      const result = await listWorkflows();
+
+      if (result.success) {
+        setWorkflows(result.data);
+      } else {
+        setError(result.error);
+      }
+
+      setIsLoading(false);
+    }
+
+    load();
+  }, []);
+
+  /**
+   * Handle create new workflow
+   */
+  const handleCreate = useCallback(() => {
+    router.push('/workflow/new');
+  }, [router]);
+
+  /**
+   * Handle delete workflow
+   */
+  const handleDelete = useCallback(async (id: string) => {
+    const confirmed = window.confirm('Are you sure you want to delete this workflow?');
+    if (!confirmed) return;
+
+    const result = await deleteWorkflow(id);
+
+    if (result.success) {
+      setWorkflows((prev) => prev.filter((w) => w.id !== id));
+    } else {
+      alert('Failed to delete workflow');
+    }
+  }, []);
+
+  /**
+   * Handle export workflow
+   */
+  const handleExport = useCallback(async (id: string) => {
+    const result = await getWorkflow(id);
+
+    if (!result.success) {
+      alert('Failed to export workflow');
+      return;
+    }
+
+    const workflow = result.data;
+    const exportData: WorkflowExport = {
+      version: '1.0',
+      name: workflow.name,
+      data: workflow.data,
+      exportedAt: new Date().toISOString(),
+    };
+
+    // Create and download file
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${workflow.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, []);
+
+  /**
+   * Handle import button click
+   */
+  const handleImportClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  /**
+   * Handle file selection for import
+   */
+  const handleFileChange = useCallback(async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const importData = JSON.parse(text) as WorkflowExport;
+
+      // Validate import data
+      if (!importData.name || !importData.data || !importData.data.nodes || !importData.data.edges) {
+        alert('Invalid workflow file format');
+        return;
+      }
+
+      // Create new workflow from import
+      const result = await createWorkflow(importData.name, importData.data);
+
+      if (result.success) {
+        // Navigate to the new workflow
+        router.push(`/workflow/${result.data.id}`);
+      } else {
+        alert('Failed to import workflow');
+      }
+    } catch {
+      alert('Failed to parse workflow file');
+    }
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }, [router]);
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+    <div className="flex h-screen w-full bg-canvas">
+      {/* Sidebar */}
+      <HomeSidebar />
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header
+          className={cn(
+            'h-16 flex items-center justify-between px-8',
+            'border-b border-white/[0.04]'
+          )}
+        >
+          <h1 className="text-xl font-semibold text-white">My Workspace</h1>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            {/* Hidden file input for import */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileChange}
+              className="hidden"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+
+            {/* Import Button */}
+            <button
+              onClick={handleImportClick}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2',
+                'bg-transparent border border-white/[0.08] rounded-lg',
+                'text-sm text-white/70 hover:text-white hover:border-white/16',
+                'transition-colors'
+              )}
+            >
+              <Upload size={16} />
+              Import workflow
+            </button>
+
+            {/* Create Button */}
+            <button
+              onClick={handleCreate}
+              className={cn(
+                'flex items-center gap-2 px-4 py-2',
+                'bg-[#F7FFA8] text-[#1a1a1a] rounded-lg',
+                'text-sm font-medium',
+                'hover:bg-[#E8F099] transition-colors'
+              )}
+            >
+              <Plus size={16} />
+              Create New File
+            </button>
+          </div>
+        </header>
+
+        {/* Content */}
+        <main className="flex-1 overflow-y-auto p-8">
+          {/* Error State */}
+          {error && (
+            <div className="flex flex-col items-center justify-center py-12">
+              <span className="text-red-400 mb-4">{error}</span>
+              <button
+                onClick={() => window.location.reload()}
+                className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {/* Grid */}
+          {!error && (
+            <WorkflowGrid
+              workflows={workflows}
+              isLoading={isLoading}
+              onDelete={handleDelete}
+              onExport={handleExport}
+              onCreate={handleCreate}
+            />
+          )}
+        </main>
+      </div>
     </div>
   );
 }
