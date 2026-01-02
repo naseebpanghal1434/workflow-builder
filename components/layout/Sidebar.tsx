@@ -7,10 +7,11 @@
 
 import { useState, type ReactElement } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, FileText, Image as ImageIcon, Sparkles, Settings2 } from 'lucide-react';
+import { Search, FileText, Image as ImageIcon, Sparkles, Settings2, ImagePlus } from 'lucide-react';
 import { SearchInput } from '@/components/sidebar/SearchInput';
 import { DraggableNodeButton } from '@/components/sidebar/DraggableNodeButton';
 import { cn } from '@/lib/utils/cn';
+import { NODE_TYPES } from '../../types/nodes';
 
 /**
  * Props for the Sidebar component
@@ -69,10 +70,11 @@ export function Sidebar({
    * Node buttons configuration
    */
   const nodeButtons = [
-    { nodeType: 'system' as const, label: 'System Prompt', icon: <Settings2 size={24} strokeWidth={1.5} /> },
-    { nodeType: 'text' as const, label: 'Prompt', icon: <FileText size={24} strokeWidth={1.5} /> },
-    { nodeType: 'image' as const, label: 'Image', icon: <ImageIcon size={24} strokeWidth={1.5} /> },
-    { nodeType: 'llm' as const, label: 'Run Any LLM', icon: <Sparkles size={24} strokeWidth={1.5} /> },
+    { nodeType: NODE_TYPES.SYSTEM_PROMPT, label: 'System Prompt', icon: <Settings2 size={24} strokeWidth={1.5} /> },
+    { nodeType: NODE_TYPES.TEXT_INPUT, label: 'Prompt', icon: <FileText size={24} strokeWidth={1.5} /> },
+    { nodeType: NODE_TYPES.IMAGE_INPUT, label: 'Image', icon: <ImageIcon size={24} strokeWidth={1.5} /> },
+    { nodeType: NODE_TYPES.LLM, label: 'Run Any LLM', icon: <Sparkles size={24} strokeWidth={1.5} /> },
+    { nodeType: NODE_TYPES.IMG_DESCRIBE, label: 'Image Describe', icon: <ImagePlus size={24} strokeWidth={1.5} /> },
   ];
 
   const filteredNodes = searchValue

@@ -23,6 +23,7 @@ import { executeLLMNode } from '@/lib/utils/input-chaining';
 import { cn } from '@/lib/utils/cn';
 import { getWorkflow } from '@/lib/db/workflows';
 import type { Node } from 'reactflow';
+import { NODE_TYPES } from '@/types/nodes';
 
 /**
  * WorkflowEditor - Main workflow editor interface
@@ -66,6 +67,7 @@ function WorkflowEditor(): ReactElement {
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isValidConnection,
     selectNode,
     getSelectedNode,
     selectEdge,
@@ -255,7 +257,7 @@ function WorkflowEditor(): ReactElement {
    */
   const nodesWithCallbacks = useMemo(() => {
     return nodes.map((node) => {
-      if (node.type === 'text' || node.type === 'system') {
+      if (node.type === NODE_TYPES.TEXT_INPUT || node.type === NODE_TYPES.SYSTEM_PROMPT) {
         return {
           ...node,
           data: {
@@ -265,7 +267,7 @@ function WorkflowEditor(): ReactElement {
           },
         };
       }
-      if (node.type === 'image') {
+      if (node.type === NODE_TYPES.IMAGE_INPUT) {
         return {
           ...node,
           data: {
@@ -276,7 +278,7 @@ function WorkflowEditor(): ReactElement {
           },
         };
       }
-      if (node.type === 'llm') {
+      if (node.type === NODE_TYPES.LLM) {
         return {
           ...node,
           data: {
@@ -286,9 +288,19 @@ function WorkflowEditor(): ReactElement {
           },
         };
       }
+      if (node.type === NODE_TYPES.IMG_DESCRIBE) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            onDelete: createDeleteHandler(node.id),
+            onRun: () => handleLLMRun(node.id),
+          },
+        };
+      }
       return node;
     });
-  }, [nodes, edges, handleLLMRun, handleTextChange, handleImageChange, createDeleteHandler]);
+  }, [nodes, handleLLMRun, handleTextChange, handleImageChange, createDeleteHandler]);
 
   /**
    * Handle zoom change from toolbar dropdown
@@ -361,6 +373,14 @@ function WorkflowEditor(): ReactElement {
   function handleBackClick(): void {
     router.push('/');
   }
+
+  const handlePromptChange = useCallback(
+    (nodeId: string, prompt: string) => {
+      updateNodeData(nodeId, { prompt });
+    },
+    [updateNodeData]
+  );
+
 
   // Loading state
   if (isLoading) {
@@ -448,6 +468,7 @@ function WorkflowEditor(): ReactElement {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          isValidConnection={isValidConnection}
           onNodeClick={handleNodeClick}
           onEdgeClick={handleEdgeClick}
           onPaneClick={handlePaneClick}
@@ -479,6 +500,7 @@ function WorkflowEditor(): ReactElement {
         selectedNode={getSelectedNode()}
         onModelChange={handleModelChange}
         onRun={handleLLMRun}
+        onPromptChange={handlePromptChange}
         isRunning={isLLMRunning}
       />
     </div>

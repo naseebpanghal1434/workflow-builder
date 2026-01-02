@@ -8,6 +8,7 @@ import { TextNode } from './TextNode';
 import { ImageNode } from './ImageNode';
 import { LLMNode } from './LLMNode';
 import { SystemPromptNode } from './SystemPromptNode';
+import { ImageDescriptionNode } from './ImageDescriptionNode';
 
 /**
  * Custom node types for React Flow
@@ -24,11 +25,13 @@ export const nodeTypes: NodeTypes = {
   image: ImageNode,
   llm: LLMNode,
   system: SystemPromptNode,
+  imgDescribe: ImageDescriptionNode,
 };
 
 export { TextNode } from './TextNode';
 export { ImageNode } from './ImageNode';
 export { LLMNode } from './LLMNode';
 export { SystemPromptNode } from './SystemPromptNode';
+export { ImageDescriptionNode } from './ImageDescriptionNode';
 export { NodeWrapper } from './NodeWrapper';
 export { NodeMenu, type NodeMenuItem } from './NodeMenu';

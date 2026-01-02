@@ -13,6 +13,7 @@ import { NodeMenu, type NodeMenuItem } from './NodeMenu';
 import { Spinner } from '@/components/ui/Spinner';
 import type { LLMNodeData } from '@/types/nodes';
 import { cn } from '@/lib/utils/cn';
+import { useConnectionState } from '@/hooks/useConnectionState';
 
 /**
  * Extended LLMNodeData with handlers
@@ -44,12 +45,31 @@ function LLMNodeComponent({
 
   // Detect when user is dragging an edge to connect nodes
   // useStore subscribes to React Flow's internal state - connectionNodeId is set during edge creation
-  const isConnecting = useStore((state) => !!state.connectionNodeId);
+  const isConnectingBasic = useStore((state) => !!state.connectionNodeId);
+
+  // Get connection state for handle compatibility (fading incompatible handles)
+  const { isConnecting, isHandleCompatible } = useConnectionState();
 
   // Show handle labels when:
   // 1. User hovers over the node (to see available inputs/outputs)
   // 2. User is connecting an edge (to help them find the right handle)
-  const showLabels = isHovered || isConnecting;
+  const showLabels = isHovered || isConnectingBasic;
+
+  /**
+   * Get handle style with fading for incompatible connections
+   */
+  function getHandleStyle(handleId: string, baseColor: string, topPercent: string) {
+    const isCompatible = isHandleCompatible(handleId);
+    const shouldFade = isConnecting && !isCompatible;
+
+    return {
+      top: topPercent,
+      left: '-15px',
+      background: baseColor,
+      opacity: shouldFade ? 0.3 : 1,
+      transition: 'opacity 0.15s ease-in-out',
+    };
+  }
 
   /**
    * Handle run button click
@@ -90,27 +110,28 @@ function LLMNodeComponent({
           - 'text': Connected text becomes the user message (main prompt)
           - 'image': Connected images are sent for multimodal processing
           Colors match the corresponding node type themes for visual consistency
+          Handles fade when incompatible with the connecting node type
         */}
         <Handle
           type="target"
           position={Position.Left}
           id="system"
           className="!w-[8px] !h-[8px] !border-0 !rounded-full"
-          style={{ top: '25%', left: '-15px', background: '#F5D547' }} // Yellow - matches SystemPromptNode
+          style={getHandleStyle('system', '#F5D547', '25%')} // Yellow - matches SystemPromptNode
         />
         <Handle
           type="target"
           position={Position.Left}
           id="text"
           className="!w-[8px] !h-[8px] !border-0 !rounded-full"
-          style={{ top: '45%', left: '-15px', background: '#F1A0FA' }} // Pink - matches TextNode
+          style={getHandleStyle('text', '#F1A0FA', '45%')} // Pink - matches TextNode
         />
         <Handle
           type="target"
           position={Position.Left}
           id="image"
           className="!w-[8px] !h-[8px] !border-0 !rounded-full"
-          style={{ top: '65%', left: '-15px', background: '#6EDDB3' }} // Green - matches ImageNode
+          style={getHandleStyle('image', '#6EDDB3', '65%')} // Green - matches ImageNode
         />
 
         {/* Header */}

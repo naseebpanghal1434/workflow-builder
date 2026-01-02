@@ -19,12 +19,13 @@
  *    not the entire nodes array, using functional updates.
  */
 
-'use client';
+"use client";
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   useNodesState,
   useEdgesState,
+  useStoreApi,
   addEdge,
   type Node,
   type Edge,
@@ -32,11 +33,22 @@ import {
   type OnEdgesChange,
   type OnConnect,
   type Connection,
-} from 'reactflow';
-import type { WorkflowData } from '@/types/workflow';
-import { DEFAULT_VIEWPORT } from '@/types/workflow';
-import type { TextNodeData, ImageNodeData, LLMNodeData } from '@/types/nodes';
-import { DEFAULT_MODEL_ID } from '@/constants/models';
+} from "reactflow";
+import type { WorkflowData } from "@/types/workflow";
+import { DEFAULT_VIEWPORT } from "@/types/workflow";
+import {
+  type TextNodeData,
+  type ImageNodeData,
+  type LLMNodeData,
+  NODE_TYPES,
+  ImageDescribeNodeData,
+  NODE_TYPES_LABELS,
+} from "@/types/nodes";
+import { DEFAULT_MODEL_ID } from "@/constants/models";
+import {
+  isHandleCompatible,
+  wouldCreateCycle,
+} from "@/lib/utils/connectionValidation";
 
 /**
  * Return type for useWorkflow hook
@@ -63,6 +75,8 @@ interface UseWorkflowReturn {
   onEdgesChange: OnEdgesChange;
   /** Handler for new connections */
   onConnect: OnConnect;
+  /** Validate if a connection is allowed */
+  isValidConnection: (connection: Connection) => boolean;
 
   /** Select a node by ID */
   selectNode: (nodeId: string | null) => void;
@@ -91,7 +105,12 @@ interface UseWorkflowReturn {
 /**
  * Node data type for initial node creation
  */
-type NodeData = TextNodeData | ImageNodeData | LLMNodeData | { label: string };
+type NodeData =
+  | TextNodeData
+  | ImageNodeData
+  | LLMNodeData
+  | ImageDescribeNodeData
+  | { label: string };
 
 /**
  * Get initial data for a node type
@@ -101,28 +120,38 @@ type NodeData = TextNodeData | ImageNodeData | LLMNodeData | { label: string };
  */
 function getInitialNodeData(type: string): NodeData {
   switch (type) {
-    case 'text':
+    case NODE_TYPES.TEXT_INPUT:
       return {
-        label: 'Text',
-        content: '',
+        label: NODE_TYPES_LABELS[type],
+        content: "",
       };
-    case 'system':
+    case NODE_TYPES.SYSTEM_PROMPT:
       return {
-        label: 'System Prompt',
-        content: '',
+        label: NODE_TYPES_LABELS[type],
+        content: "",
       };
-    case 'image':
+    case NODE_TYPES.IMAGE_INPUT:
       return {
-        label: 'Image',
+        label: NODE_TYPES_LABELS[type],
         imageData: null,
         fileName: null,
         mimeType: null,
       };
-    case 'llm':
+    case NODE_TYPES.LLM:
       return {
-        label: 'LLM',
+        label: NODE_TYPES_LABELS[type],
         model: DEFAULT_MODEL_ID,
-        output: '',
+        output: "",
+        isLoading: false,
+        error: null,
+      };
+    case NODE_TYPES.IMG_DESCRIBE:
+      return {
+        label: NODE_TYPES_LABELS[type],
+        model: DEFAULT_MODEL_ID,
+        prompt:
+          "You are an expert image analyst tasked with providing detailed accurate and helpful descriptions of images. Your goal is to make visual content accessible through clear comprehensive text descriptions. Be objective and factual using clear descriptive language. Organize information from general to specific and include relevant context. Start with a brief overview of what the image shows then describe the main subjects and setting. Include visual details like colors lighting, textures, style, genre, contrast and composition. Transcribe any visible text accurately. Use specific concrete language and mention spatial relationships. For people focus on actions clothing and general appearance respectfully. For data visualizations explain the information presented. Write as if describing to someone who cannot see the image including important context for understanding. Balance thoroughness with clarity and provide descriptions in natural flowing narrative form. Your description should not be longer than 500 characters",
+        output: "",
         isLoading: false,
         error: null,
       };
@@ -151,7 +180,7 @@ export function useWorkflow(): UseWorkflowReturn {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
-  const [flowName, setFlowName] = useState('Untitled Workflow');
+  const [flowName, setFlowName] = useState("Untitled Workflow");
 
   /**
    * Ref to always have latest nodes for edge color calculation
@@ -167,6 +196,14 @@ export function useWorkflow(): UseWorkflowReturn {
   }, [nodes]);
 
   /**
+   * Ref to always have latest edges for cycle detection
+   */
+  const edgesRef = useRef(edges);
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  /**
    * Handle new connections between nodes
    *
    * Performance: Uses nodesRef instead of nodes to avoid recreating
@@ -178,21 +215,21 @@ export function useWorkflow(): UseWorkflowReturn {
       // Get edge color based on source node type using ref for latest nodes
       const currentNodes = nodesRef.current;
       const sourceNode = currentNodes.find((n) => n.id === connection.source);
-      let edgeColor = '#F1A0FA'; // default pink
+      let edgeColor = "#F1A0FA"; // default pink
 
       if (sourceNode) {
         switch (sourceNode.type) {
-          case 'system':
-            edgeColor = '#F5D547'; // yellow
+          case "system":
+            edgeColor = "#F5D547"; // yellow
             break;
-          case 'text':
-            edgeColor = '#F1A0FA'; // pink
+          case "text":
+            edgeColor = "#F1A0FA"; // pink
             break;
-          case 'image':
-            edgeColor = '#6EDDB3'; // green
+          case "image":
+            edgeColor = "#6EDDB3"; // green
             break;
-          case 'llm':
-            edgeColor = '#FFFFFF'; // white
+          case "llm":
+            edgeColor = "#FFFFFF"; // white
             break;
         }
       }
@@ -202,11 +239,52 @@ export function useWorkflow(): UseWorkflowReturn {
         id: `edge-${connection.source}-${connection.target}-${Date.now()}`,
         style: { stroke: edgeColor, strokeWidth: 2 },
         animated: true,
-        type: 'smoothstep',
+        type: "smoothstep",
       };
       setEdges((eds) => addEdge(newEdge, eds));
     },
     [setEdges]
+  );
+
+  // Get stable store API reference for real-time access inside callbacks
+  // useStoreApi returns a stable reference that doesn't cause re-renders
+  const storeApi = useStoreApi();
+
+  /**
+   * Validate if a connection is allowed
+   *
+   * Checks two conditions:
+   * 1. Handle compatibility - source output type must match target handle type
+   * 2. Cycle detection - connection must not create a circular dependency
+   */
+  const isValidConnection = useCallback(
+    (connection: Connection): boolean => {
+      const { source, target, targetHandle } = connection;
+
+      // Must have source and target
+      if (!source || !target) return false;
+
+      // Get real-time data from store API (stable reference, no re-renders)
+      const state = storeApi.getState();
+      const currentNodes = state.getNodes();
+      const currentEdges = state.edges;
+
+      // Get source node to determine its type
+      const sourceNode = currentNodes.find((n) => n.id === source);
+
+      // Check handle compatibility
+      if (!isHandleCompatible(sourceNode?.type, targetHandle)) {
+        return false;
+      }
+
+      // Check for cycles
+      if (wouldCreateCycle(source, target, currentEdges)) {
+        return false;
+      }
+
+      return true;
+    },
+    [storeApi]
   );
 
   /**
@@ -344,6 +422,7 @@ export function useWorkflow(): UseWorkflowReturn {
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isValidConnection,
     selectNode,
     getSelectedNode,
     selectEdge,

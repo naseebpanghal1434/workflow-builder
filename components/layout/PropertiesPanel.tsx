@@ -12,6 +12,7 @@ import { Dropdown, type DropdownOption } from '@/components/ui/Dropdown';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils/cn';
 import { GEMINI_MODELS } from '@/constants/models';
+import { NODE_TYPES } from '@/types/nodes';
 
 /**
  * Props for the PropertiesPanel component
@@ -25,6 +26,8 @@ interface PropertiesPanelProps {
   onRun: (nodeId: string) => void;
   /** Whether LLM is currently running */
   isRunning: boolean;
+  // /** Prompt change handler */
+  onPromptChange: (nodeId: string, prompt: string) => void;
 }
 
 /**
@@ -54,16 +57,19 @@ export function PropertiesPanel({
   selectedNode,
   onModelChange,
   onRun,
+  onPromptChange,
   isRunning,
 }: PropertiesPanelProps): ReactElement {
   const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
+  // const [selectedPrompt, setSelectedPrompt] = useState<string>(selectedNode?.data?.prompt || '');
 
   // Check if we should show the panel
-  const isVisible = selectedNode && selectedNode.type === 'llm';
+  const isVisible = selectedNode && (selectedNode.type === NODE_TYPES.LLM || selectedNode.type === NODE_TYPES.IMG_DESCRIBE);
 
   // Extract nodeId for use in handlers
   const nodeId = selectedNode?.id || '';
   const currentModel = selectedNode?.data?.model || GEMINI_MODELS[0].id;
+
 
   // Check API configuration status
   useEffect(() => {
@@ -97,6 +103,22 @@ export function PropertiesPanel({
     }
   }
 
+  function onPromptValueChange(e: React.ChangeEvent<HTMLTextAreaElement>): void {
+    if (selectedNode) {
+      const newPrompt = e.target.value;
+      onPromptChange(selectedNode.id, newPrompt);
+    }
+  }
+
+  const getLabel = () => {
+    if (selectedNode?.type === NODE_TYPES.LLM) {
+      return 'LLM Node Settings';
+    } else if (selectedNode?.type === NODE_TYPES.IMG_DESCRIBE) {
+      return 'Image Describe Node Settings';
+    }
+    return 'Node Settings';
+  }
+
   return (
     <aside
       className={cn(
@@ -109,7 +131,7 @@ export function PropertiesPanel({
     >
       {/* Header */}
       <div className="px-4 py-3 border-b border-white/[0.04]">
-        <h2 className="text-sm font-medium text-white/80">Any LLM</h2>
+        <h2 className="text-sm font-medium text-white/80">{getLabel()}</h2>
       </div>
 
       {/* Content */}
@@ -141,6 +163,24 @@ export function PropertiesPanel({
             compact
           />
         </div>
+
+        {/* Prompt TextBox */}
+        {
+          selectedNode && selectedNode.type === NODE_TYPES.IMG_DESCRIBE && (
+            <div className="flex flex-col gap-1.5 text-xs text-white/70 mb-1">
+              <div className="flex items-center gap-1.5 mb-2">
+                <label className="text-xs text-white">Model Instructions</label>
+                <Info size={12} className="text-white/60" />
+              </div>
+              <div>
+                <textarea id="prompt" name='prompt'
+                  value={selectedNode.data.prompt || ''}
+                  onChange={onPromptValueChange}
+                  className="w-full h-32 p-3 bg-canvas border border-white/8 rounded-sm text-sm text-white/80 placeholder:text-white/40 resize-none focus:outline-none focus:border-white/16" />
+              </div>
+            </div>
+          )
+        }
       </div>
 
       {/* Footer with Run Button */}
