@@ -3,8 +3,14 @@
  * @module Lib/Utils/InputChaining
  */
 
-import type { Node, Edge } from 'reactflow';
-import type { TextNodeData, ImageNodeData, LLMNodeData } from '@/types/nodes';
+import type { Node, Edge } from "reactflow";
+import {
+  type TextNodeData,
+  type ImageNodeData,
+  type LLMNodeData,
+  NODE_TYPES,
+  ImageDescribeNodeData,
+} from "@/types/nodes";
 
 /**
  * Collected inputs from connected nodes for LLM execution
@@ -47,14 +53,16 @@ export function collectLLMInputs(
     images: [],
     errors: [],
   };
-
+  const node = nodes.find((n) => n.id === llmNodeId);
   // Find all edges targeting this LLM node
   const incomingEdges = edges.filter((edge) => edge.target === llmNodeId);
 
   // If no edges, provide helpful error
   if (incomingEdges.length === 0) {
     result.errors.push(
-      'No inputs connected. Connect a Text node to provide a prompt.'
+      node && node.type === NODE_TYPES.IMG_DESCRIBE
+        ? "No inputs connected. Connect Image nodes to provide description."
+        : "No inputs connected. Connect a Text node to provide a prompt."
     );
     return result;
   }
@@ -71,14 +79,16 @@ export function collectLLMInputs(
     const targetHandle = edge.targetHandle;
 
     switch (targetHandle) {
-      case 'system': {
+      case NODE_TYPES.SYSTEM_PROMPT: {
         // System prompt input - from System Prompt node or Text node
-        if (sourceNode.type === 'system' || sourceNode.type === 'text') {
+        if (sourceNode.type === "system" || sourceNode.type === "text") {
           const data = sourceNode.data as TextNodeData;
           if (data.content && data.content.trim()) {
             // If we already have a system prompt, combine them
             if (result.systemPrompt) {
-              result.systemPrompt = `${result.systemPrompt}\n\n${data.content.trim()}`;
+              result.systemPrompt = `${
+                result.systemPrompt
+              }\n\n${data.content.trim()}`;
             } else {
               result.systemPrompt = data.content.trim();
             }
@@ -87,24 +97,31 @@ export function collectLLMInputs(
         break;
       }
 
-      case 'text': {
+      case NODE_TYPES.TEXT_INPUT: {
         // Text input - can be used as user_message or combined
-        if (sourceNode.type === 'text' || sourceNode.type === 'system') {
+        if (
+          sourceNode.type === NODE_TYPES.TEXT_INPUT ||
+          sourceNode.type === NODE_TYPES.SYSTEM_PROMPT
+        ) {
           const data = sourceNode.data as TextNodeData;
           if (data.content && data.content.trim()) {
             // If we already have a user message, combine them
             if (result.userMessage) {
-              result.userMessage = `${result.userMessage}\n\n${data.content.trim()}`;
+              result.userMessage = `${
+                result.userMessage
+              }\n\n${data.content.trim()}`;
             } else {
               result.userMessage = data.content.trim();
             }
           }
-        } else if (sourceNode.type === 'llm') {
+        } else if (sourceNode.type === NODE_TYPES.LLM) {
           // LLM output connected to another LLM's input
           const data = sourceNode.data as LLMNodeData;
           if (data.output && data.output.trim()) {
             if (result.userMessage) {
-              result.userMessage = `${result.userMessage}\n\n${data.output.trim()}`;
+              result.userMessage = `${
+                result.userMessage
+              }\n\n${data.output.trim()}`;
             } else {
               result.userMessage = data.output.trim();
             }
@@ -113,9 +130,9 @@ export function collectLLMInputs(
         break;
       }
 
-      case 'image': {
+      case NODE_TYPES.IMAGE_INPUT: {
         // Image input
-        if (sourceNode.type === 'image') {
+        if (sourceNode.type === NODE_TYPES.IMAGE_INPUT) {
           const data = sourceNode.data as ImageNodeData;
           if (data.imageData) {
             // Add the base64 image with proper data URI prefix
@@ -127,16 +144,41 @@ export function collectLLMInputs(
         }
         break;
       }
-
       default:
         console.warn(`Unknown target handle: ${targetHandle}`);
     }
   }
 
+  if (node && node.type === NODE_TYPES.IMG_DESCRIBE) {
+    const data = node.data as ImageDescribeNodeData;
+    if (data.prompt && data.prompt.trim().length > 0) {
+      // If we already have a user message, combine them
+      if (result.userMessage) {
+        result.userMessage = `${result.userMessage}\n\n${data.prompt.trim()}`;
+      } else {
+        result.userMessage = data.prompt.trim();
+      }
+    } else if (!data.prompt || data.prompt.trim().length === 0) {
+      result.errors.push(
+        "Image Describe node requires a Model instruction. You can set it in the node's properties panel."
+      );
+    }
+
+    if (result.images.length === 0) {
+      result.errors.push(
+        "No images connected. Connect an Image node to provide an image for description."
+      );
+    }
+  }
+
   // Validate required inputs
-  if (!result.userMessage) {
+  if (
+    !result.userMessage ||
+    (result.userMessage.trim().length === 0 &&
+      (!node || node.type !== NODE_TYPES.IMG_DESCRIBE))
+  ) {
     result.errors.push(
-      'No text input provided. Connect a Text node to the text input handle.'
+      "No text input provided. Connect a Text node to the text input handle."
     );
   }
 
@@ -166,12 +208,15 @@ export async function executeLLMNode(
 ): Promise<{ success: boolean; output?: string; error?: string }> {
   // Get LLM node to read model selection
   const llmNode = nodes.find((node) => node.id === llmNodeId);
-  if (!llmNode || llmNode.type !== 'llm') {
-    return { success: false, error: 'LLM node not found' };
+  if (
+    !llmNode ||
+    (llmNode.type !== "llm" && llmNode.type !== NODE_TYPES.IMG_DESCRIBE)
+  ) {
+    return { success: false, error: "LLM node not found" };
   }
 
   const llmData = llmNode.data as LLMNodeData;
-  const model = llmData.model || 'gemini-1.5-flash';
+  const model = llmData.model || "gemini-1.5-flash";
 
   // Collect inputs from connected nodes
   const inputs = collectLLMInputs(llmNodeId, nodes, edges);
@@ -183,10 +228,10 @@ export async function executeLLMNode(
 
   try {
     // Make API call
-    const response = await fetch('/api/llm', {
-      method: 'POST',
+    const response = await fetch("/api/llm", {
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
@@ -195,16 +240,17 @@ export async function executeLLMNode(
         images: inputs.images.length > 0 ? inputs.images : undefined,
       }),
     });
-
     const data = await response.json();
-
     if (data.success) {
       return { success: true, output: data.output };
     } else {
-      return { success: false, error: data.error || 'An error occurred' };
+      return { success: false, error: data.error || "An error occurred" };
     }
   } catch (error) {
-    console.error('LLM execution error:', error);
-    return { success: false, error: 'Failed to connect to the server. Please try again.' };
+    console.error("LLM execution error:", error);
+    return {
+      success: false,
+      error: "Failed to connect to the server. Please try again.",
+    };
   }
 }

@@ -17,6 +17,7 @@ import ReactFlow, {
   OnConnect,
   useReactFlow,
   NodeTypes,
+  Connection,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { cn } from '@/lib/utils/cn';
@@ -35,6 +36,8 @@ interface CanvasProps {
   onEdgesChange: OnEdgesChange;
   /** Connection handler */
   onConnect: OnConnect;
+  /** Connection validation handler */
+  isValidConnection?: (connection: Connection) => boolean;
   /** Node click handler */
   onNodeClick: (event: React.MouseEvent, node: Node) => void;
   /** Edge click handler */
@@ -62,7 +65,7 @@ interface CanvasProps {
  * hideAttribution removes the "React Flow" watermark (requires Pro license for commercial use)
  */
 const proOptions = {
-  hideAttribution: true,
+  hideAttribution: false,
 };
 
 /**
@@ -93,6 +96,7 @@ export function Canvas({
   onNodesChange,
   onEdgesChange,
   onConnect,
+  isValidConnection,
   onNodeClick,
   onEdgeClick,
   onPaneClick,
@@ -187,6 +191,7 @@ export function Canvas({
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
+        isValidConnection={isValidConnection}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}

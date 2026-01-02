@@ -7,11 +7,15 @@
  * Supports both text-only and multimodal (text + images) requests.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { genAI } from '@/lib/gemini';
-import { LLMRequestSchema } from '@/lib/schemas/llm';
-import { parseAPIError, createErrorResponse, ERROR_CODES } from '@/lib/utils/api-error';
-import type { LLMResponse } from '@/types/api';
+import { NextRequest, NextResponse } from "next/server";
+import { genAI } from "@/lib/gemini";
+import { LLMRequestSchema } from "@/lib/schemas/llm";
+import {
+  parseAPIError,
+  createErrorResponse,
+  ERROR_CODES,
+} from "@/lib/utils/api-error";
+import type { LLMResponse } from "@/types/api";
 
 /**
  * Extracts MIME type and data from a base64 image string
@@ -19,9 +23,12 @@ import type { LLMResponse } from '@/types/api';
  * @param {string} base64String - Base64 encoded image (with or without data URI prefix)
  * @returns {{ mimeType: string; data: string }} Extracted MIME type and clean base64 data
  */
-function parseBase64Image(base64String: string): { mimeType: string; data: string } {
+function parseBase64Image(base64String: string): {
+  mimeType: string;
+  data: string;
+} {
   // Handle data URI format: data:image/jpeg;base64,/9j/4AAQ...
-  if (base64String.startsWith('data:')) {
+  if (base64String.startsWith("data:")) {
     const matches = base64String.match(/^data:(.+);base64,(.+)$/);
     if (matches && matches.length === 3) {
       return {
@@ -33,7 +40,7 @@ function parseBase64Image(base64String: string): { mimeType: string; data: strin
 
   // Default to JPEG if no prefix
   return {
-    mimeType: 'image/jpeg',
+    mimeType: "image/jpeg",
     data: base64String,
   };
 }
@@ -59,12 +66,17 @@ function parseBase64Image(base64String: string): { mimeType: string; data: strin
  * // Error response:
  * { "success": false, "error": "User message is required", "code": "VALIDATION_ERROR" }
  */
-export async function POST(request: NextRequest): Promise<NextResponse<LLMResponse>> {
+export async function POST(
+  request: NextRequest
+): Promise<NextResponse<LLMResponse>> {
   try {
     // Step 1: Check for API key
     if (!process.env.GEMINI_API_KEY) {
       return NextResponse.json(
-        createErrorResponse('Gemini API key is not configured', ERROR_CODES.AUTH_ERROR),
+        createErrorResponse(
+          "Gemini API key is not configured",
+          ERROR_CODES.AUTH_ERROR
+        ),
         { status: 500 }
       );
     }
@@ -75,7 +87,10 @@ export async function POST(request: NextRequest): Promise<NextResponse<LLMRespon
       body = await request.json();
     } catch {
       return NextResponse.json(
-        createErrorResponse('Invalid JSON in request body', ERROR_CODES.VALIDATION_ERROR),
+        createErrorResponse(
+          "Invalid JSON in request body",
+          ERROR_CODES.VALIDATION_ERROR
+        ),
         { status: 400 }
       );
     }
@@ -87,14 +102,15 @@ export async function POST(request: NextRequest): Promise<NextResponse<LLMRespon
       const firstError = validationResult.error.issues[0];
       return NextResponse.json(
         createErrorResponse(
-          firstError?.message || 'Invalid request data',
+          firstError?.message || "Invalid request data",
           ERROR_CODES.VALIDATION_ERROR
         ),
         { status: 400 }
       );
     }
 
-    const { model, system_prompt, user_message, images } = validationResult.data;
+    const { model, system_prompt, user_message, images } =
+      validationResult.data;
 
     // Step 4: Initialize Gemini model with optional system instruction
     const generativeModel = genAI.getGenerativeModel({
@@ -135,10 +151,9 @@ export async function POST(request: NextRequest): Promise<NextResponse<LLMRespon
       success: true,
       output,
     });
-
   } catch (error) {
     // Log error for debugging (server-side only)
-    console.error('[LLM API Error]:', error);
+    console.error("[LLM API Error]:", error);
 
     // Parse and return user-friendly error
     const { message, code } = parseAPIError(error);
@@ -153,9 +168,8 @@ export async function POST(request: NextRequest): Promise<NextResponse<LLMRespon
       [ERROR_CODES.INTERNAL_ERROR]: 500,
     };
 
-    return NextResponse.json(
-      createErrorResponse(message, code),
-      { status: statusMap[code] || 500 }
-    );
+    return NextResponse.json(createErrorResponse(message, code), {
+      status: statusMap[code] || 500,
+    });
   }
 }

@@ -7,11 +7,8 @@
 
 import type { ReactElement, ReactNode, DragEvent } from 'react';
 import { cn } from '@/lib/utils/cn';
-
-/**
- * Node type identifier
- */
-type NodeType = 'text' | 'image' | 'llm' | 'system';
+import { NodeType } from '@/types/nodes';
+import { log } from 'console';
 
 /**
  * Props for the DraggableNodeButton component
